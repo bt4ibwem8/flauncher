@@ -14,12 +14,19 @@ env:
 
 jobs:
   build:
-    name: Build APK and create Release
+    name: Build APK and create Release (with debug)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Debug - show repo root files
+        run: |
+          echo "Working directory: $(pwd)"
+          ls -la
+          echo "Top-level files:"
+          ls -la . | sed -n '1,200p'
 
       - name: Install Java 17
         uses: actions/setup-java@v4
@@ -32,6 +39,11 @@ jobs:
         with:
           flutter-version: '3.38.9'
           channel: 'stable'
+
+      - name: Print Flutter & Java versions
+        run: |
+          java --version || true
+          flutter --version || true
 
       - name: Set ANDROID_SDK_ROOT
         run: |
@@ -59,29 +71,70 @@ jobs:
           echo "$ANDROID_SDK_ROOT/emulator" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-      - name: Verify environment
+      - name: Verify sdkmanager and environment
         run: |
-          java --version
-          flutter --version
           echo "sdkmanager path:"
           ls -la "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" || true
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --version || true
+          echo "ENV vars:"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "PATH=$PATH"
 
-      - name: Create android/local.properties for Gradle (sdk.dir + ndk.dir)
+      - name: Debug - show Gradle wrapper & Kotlin plugin info
         run: |
-          # find installed NDK dir
-          NDK_DIR=$(ls -d "$ANDROID_SDK_ROOT"/ndk/* | sort -V | tail -n1 || true)
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
-          if [ -n "$NDK_DIR" ]; then
-            echo "ndk.dir=$NDK_DIR" >> android/local.properties
+          echo "--- gradle-wrapper.properties ---"
+          if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
+            cat android/gradle/wrapper/gradle-wrapper.properties
+          else
+            echo "android/gradle/wrapper/gradle-wrapper.properties not found"
           fi
-          echo "local.properties:"
-          cat android/local.properties || true
+          echo "--- android/build.gradle (top 200 lines) ---"
+          if [ -f android/build.gradle ]; then
+            sed -n '1,200p' android/build.gradle
+          else
+            echo "android/build.gradle not found"
+          fi
+          echo "--- android/app/build.gradle (top 200 lines) ---"
+          if [ -f android/app/build.gradle ]; then
+            sed -n '1,200p' android/app/build.gradle
+          else
+            echo "android/app/build.gradle not found"
+          fi
+          echo "--- grep for kotlin gradle plugin ---"
+          grep -n "kotlin-gradle-plugin" -R android || true
+          grep -n "org.jetbrains.kotlin" -R android || true
+
+      - name: Debug - runnable Gradle wrapper version (may download wrapper)
+        continue-on-error: true
+        run: |
+          if [ -f android/gradlew ]; then
+            chmod +x android/gradlew || true
+            echo "Running ./android/gradlew --version (may take a while)..."
+            ./android/gradlew --version || true
+          else
+            echo "android/gradlew not present"
+          fi
+
+      - name: Debug - show local.properties if exists
+        run: |
+          if [ -f android/local.properties ]; then
+            echo "android/local.properties:"
+            cat android/local.properties
+          else
+            echo "android/local.properties not present"
+          fi
 
       - name: Flutter clean and pub get
         run: |
           flutter --no-color clean
           flutter pub get
+
+      - name: Debug - show pubspec and flutter pub deps summary
+        run: |
+          echo "--- pubspec.yaml top ---"
+          sed -n '1,200p' pubspec.yaml || true
+          echo "--- flutter pub outdated (quick) ---"
+          flutter pub deps --no-dev | sed -n '1,200p' || true
 
       - name: Build APK (release unsigned, verbose)
         run: |
