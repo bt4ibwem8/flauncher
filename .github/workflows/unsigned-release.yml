@@ -1,5 +1,9 @@
 name: Build and release unsigned APK
 
+# Allow this workflow to create releases (write access to contents)
+permissions:
+  contents: write
+
 on:
   push:
     branches:
