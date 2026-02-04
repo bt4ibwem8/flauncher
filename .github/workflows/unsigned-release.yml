@@ -37,39 +37,24 @@ jobs:
         run: |
           echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/android-sdk" >> $GITHUB_ENV
 
-      - name: Prepare Android SDK (cmdline-tools + platform-tools + build-tools + platform)
+      - name: Prepare Android SDK and install NDK (cmdline-tools + platform-tools + build-tools + platform + ndk)
         run: |
           set -euo pipefail
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
           mkdir -p "$ANDROID_SDK_ROOT"
           cd "$ANDROID_SDK_ROOT"
-          CLI_ZIP=commandlinetools-linux-latest.zip
-          wget -q --show-progress "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip" -O "$CLI_ZIP"
-          unzip -q "$CLI_ZIP" -d cmdline-tools-temp
+          ZIP=commandlinetools-linux-latest.zip
+          wget -q --show-progress "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip" -O "$ZIP"
+          unzip -q "$ZIP" -d cmdline-tools-temp
           mkdir -p cmdline-tools/latest
           mv cmdline-tools-temp/cmdline-tools/* cmdline-tools/latest/
-          rm -rf cmdline-tools-temp "$CLI_ZIP"
-          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
-          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
-          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-33" "build-tools;33.0.0"
-
-      - name: Install Android NDK and create local.properties
-        run: |
-          set -euo pipefail
-          echo "Installing Android NDK..."
-          # zvoľ verziu NDK podľa potreby; tu používame stabilnú verziu 25.2.9519653
-          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "ndk;25.2.9519653"
-          # nájdi nainštalovanú NDK zložku (poslednú)
-          NDK_DIR=$(ls -d "$ANDROID_SDK_ROOT"/ndk/* | sort -V | tail -n1)
-          echo "Detected NDK at: $NDK_DIR"
-          # zapíš local.properties do android/ (pre Gradle)
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
-          echo "ndk.dir=$NDK_DIR" >> android/local.properties
-          echo "local.properties contents:"
-          cat android/local.properties
-
-      - name: Export Android paths for later steps
-        run: |
+          rm -rf cmdline-tools-temp "$ZIP"
+          SDKMAN="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          chmod +x "$SDKMAN"
+          # Accept licenses and install required components (explicit path to sdkmanager)
+          yes | "$SDKMAN" --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
+          "$SDKMAN" --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-33" "build-tools;33.0.0" "ndk;25.2.9519653"
+          # expose paths for subsequent steps
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/emulator" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
@@ -78,8 +63,20 @@ jobs:
         run: |
           java --version
           flutter --version
-          echo "sdkmanager version:"
-          sdkmanager --version || true
+          echo "sdkmanager path:"
+          ls -la "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --version || true
+
+      - name: Create android/local.properties for Gradle (sdk.dir + ndk.dir)
+        run: |
+          # find installed NDK dir
+          NDK_DIR=$(ls -d "$ANDROID_SDK_ROOT"/ndk/* | sort -V | tail -n1 || true)
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+          if [ -n "$NDK_DIR" ]; then
+            echo "ndk.dir=$NDK_DIR" >> android/local.properties
+          fi
+          echo "local.properties:"
+          cat android/local.properties || true
 
       - name: Flutter clean and pub get
         run: |
