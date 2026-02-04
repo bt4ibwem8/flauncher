@@ -10,7 +10,6 @@ on:
   workflow_dispatch:
 
 env:
-  ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
   OUTPUT_DIR: build/app/outputs/flutter-apk
 
 jobs:
@@ -34,6 +33,10 @@ jobs:
           flutter-version: '3.24.5'
           channel: 'stable'
 
+      - name: Set ANDROID_SDK_ROOT
+        run: |
+          echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/android-sdk" >> $GITHUB_ENV
+
       - name: Prepare Android SDK (cmdline-tools + platform-tools + build-tools + platform)
         run: |
           set -euo pipefail
@@ -50,13 +53,11 @@ jobs:
           yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
           sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-33" "build-tools;33.0.0"
 
-      - name: Export Android envs
+      - name: Export Android paths for later steps
         run: |
-          echo "PATH add"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/emulator" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$ANDROID_SDK_ROOT/tools/bin" >> $GITHUB_PATH || true
 
       - name: Verify environment
         run: |
@@ -64,7 +65,6 @@ jobs:
           flutter --version
           echo "sdkmanager version:"
           sdkmanager --version || true
-          echo "java -version done"
 
       - name: Flutter clean and pub get
         run: |
@@ -75,7 +75,6 @@ jobs:
         run: |
           set -euo pipefail
           flutter --no-color build apk --release --no-shrink -v | tee flutter-build.log
-        continue-on-error: false
 
       - name: List build outputs for debugging
         run: |
